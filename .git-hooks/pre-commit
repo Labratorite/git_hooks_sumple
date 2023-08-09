@@ -1,0 +1,49 @@
+echo $'\e[36;47m ***** pre-commit hookを実行します ***** \e[m'
+ 
+# プロジェクトディレクトリ
+project_dir=server
++against=HEAD
+#docker内でcheckするため、project_dir/からの相対パスで処理する
+cur_option_length=$((3+${#project_dir}+1))
+ 
+FILES=`git diff-index --cached --name-status $against -- | grep -E '^[AUM].*\.php$'| cut -c${cur_option_length}-`;
+if [ $? -ne 0 ]; then
+    echo "Get File list Error!" >&2
+    exit 1
+fi
+ 
+# Redirect output to stderr.
+exec 1>&2
+SYNTAX_CHECK=0
+ 
+## 静的解析、及びフォーマッターの実行
+# コミットされるファイルのうち、.phpで終わるもの
+for FILE in $FILES; do
+    echo;
+    #echo -e "\e[36;47m${FILE} \e[m"
+    echo -e "\e[1;46m${FILE} \e[m"
+    # シンタックスのチェック
+    echo -e "\e[36mphp -l Syntax check\e[m"
+    if docker-compose exec -T app php -l $FILE; then
+ 
+        # phpstanでコード静的解析
+        echo;
+        echo -e $'\e[36mphpstan analyse \e[m'
+        if ! docker-compose exec -T app ./vendor/bin/phpstan analyse $FILE; then
+            SYNTAX_CHECK=1
+            echo -e $"\e[31;43mphpstan error: ${FILE} \e[m"
+        fi
+    else
+        SYNTAX_CHECK=1
+    fi
+done
+ 
+ 
+## 最後の確認
+if [ $SYNTAX_CHECK -eq 0 ]; then
+    exit 0
+else
+    echo -e $'\e[31;43m 修正を行った上で再度コミットしてください \e[m'
+    exit 1
+fi
+ 
